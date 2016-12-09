@@ -1,0 +1,203 @@
+---
+title: "Will My Gas Money Get Me Further If My Car Has A Manual Transmission ?"
+author: "JRB"
+date: "October 10, 2016"
+output: pdf_document
+geometry: margin=0.75in
+fontsize: 8pt
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+## making sure we have all out tools
+library(tidyverse)
+library(pander)
+library(gridExtra)
+library(lmtest)
+library(stargazer)
+## Setting some global pander options
+panderOptions("round",2)
+```
+
+## Executive Summary  
+In this short report we will evaluate the comparative gas efficiency of automatic 
+vs. manual cars. We will use linear models to try explain fully gas efficiency.
+Our analysis reveals that on average manual cars offer better fuel efficiceny but this is only statistically significant for smaller engines (4 cylinder). 
+
+## Exploratory Data Analysis
+```{r EAD, echo=FALSE}
+## TODO: add the grid to compare the graphs side by side 
+data(mtcars)
+##Making am and cyl as factors
+mycars <- mutate(mtcars, cyl=factor(cyl,labels=c("4cyl","6cyl","8cyl")),
+                           am=factor(am,labels=c("automatic","manual")))
+##
+```
+```{r plots, echo=FALSE,fig.align='center'}
+g <- ggplot(data=mycars, aes(x=am,y=mpg))
+g <- g + geom_violin(aes(fill=am),scale="area") +
+         scale_fill_brewer(palette="BuGn") + 
+         theme_minimal() + 
+         stat_summary(fun.data ="mean_se",
+                 colour="red") + 
+          ggtitle("A manual transmission seems \n to provide better gas mileage overall") +
+    xlab("") +
+    ylab("mpg") 
+g <- g + theme(
+                text = element_text(
+                                        face="italic",
+                                        colour="black", 
+                                        size=8)
+                ) + guides(fill=FALSE)
+g1 <- g
+g <- ggplot(
+                data=mycars,
+                aes(x=interaction(am,cyl),y=mpg)
+                )
+g <- g + geom_violin(aes(fill=cyl),
+                scale="area") + 
+    scale_fill_brewer(palette="BuGn") + 
+    theme_minimal() + 
+        stat_summary(fun.data ="mean_se",
+                 colour="red") + 
+    ggtitle("This gas mileage gain seems \n true only for smaller engines...") +
+    xlab("Transmission Type vs cylinder (4,6 or 8)") 
+g <- g + theme(
+                text = element_text(
+                                        face="italic",
+                                        colour="black", 
+                                        size=8)
+                        )
+g <- g  + theme(legend.position=c(0.8,0.8),
+                axis.title.y = element_blank(),
+                axis.text.y= element_blank())
+g2 <- g
+grid.arrange(g1,g2,ncol=2)
+```
+
+This simple data exploration helps us generate two hypothesis we need to verify...  
+1. *Hypothesis #1:* Manual transmissions provides better mpg    
+2. *Hypothesis #2:* Better mpg is only significant for smaller engines  
+
+## Model selection
+We will explore there multivariate regression models:  
+
+* Model 1: ```mpg ~ factor(am)``` mpg against transmission type  
+* Model 2: ```mpg ~ factor(am) + factor(am):factor(cyl)``` mpg against transmission 
+type as a regressor and an interaction term between number of cylinders and transmission
+* Model 3: ```mpg ~ factor(am) + factor(cyl) + factor(am):factor(cyl)``` mpg 
+against transmission type an dnumber of cylinders as regressors and an intercation 
+factor bewteen transmission and number of cylinders.
+
+
+```{r models selection, echo=FALSE}
+        mycars$cyl <- relevel(mycars$cyl,ref="4cyl")
+         mycars$am <- relevel(mycars$am,ref="manual")
+        fit1 <- lm(mpg ~ factor(am), data=mycars)
+        fit2 <- update(fit1, mpg ~ factor(am) +
+                       factor(am):factor(cyl) )
+        fit3 <- update(fit2, mpg ~  factor(am) * factor(cyl))
+        
+        lrt <- lrtest(fit1,fit2,fit3)
+        
+        
+```
+```{r LRT, echo=FALSE,results='asis'}
+pander(anova(fit1,fit2,fit3))
+```
+   
+   
+The anova test reveals that model 2 is the most approriate we could pick. Model 3 is not adding any additional information.  
+We plot (figure 1) the residuals of the two models we will be using and we see that there's
+no obvious pattern in the residual that would impact the models we chose.
+```{r plot residuals, echo=FALSE, fig.cap='Residuals plots for model 1 and 2', fig.align='center'}
+par(mfrow=c(2,2))
+plot(resid(fit1))
+abline(h=0,col="red",lwd=2)
+plot(resid(fit2))
+abline(h=0,col="red",lwd=2)
+```
+
+
+## Is there a mpg gain with manual cars ?  
+Model 1 is interesting to use to prove the assumption that on average (without distinction on cylinder count) manual transmission have better fuel economy.
+```{r fit 1 table, echo=FALSE,results='asis'} 
+#pander(fit1)
+stargazer(fit1, 
+          header=FALSE,
+          type='latex',
+          intercept.bottom = FALSE,
+          digits=2,
+          covariate.labels = c("Manual Transimission (intercept)","Automatic Transmission"),
+          title="Manual vs Automatic mpg - Model 1")
+```
+   
+   
+We re-leveled the factors of ```mtcars``` to use manual as a reference point. 
+The coeficient is interpreted by the difference of the mean between manual cars mpg 
+and automatic cars mpg. A negative coefficient indicates a better mpg for manual cars. 
+The significance level tells us that the coefficient is different that 0. 
+This is confirmed by a t.test reproduce in appendix 1. Using this model we can quantify the average gain in mpg for manual cars using a confidence interval on the 
+coefficient. The mpg gain for manual cars is between ```r round(abs(confint(fit1)[2,1]),2) ``` and ```r round(abs(confint(fit1)[2,2]),2)```
+So we can state that on average manual cars are more gas efficient than automatic cars.  
+
+##Is this mpg gain true for all cylinders ?  
+
+```{r fit2 model,echo=FALSE, results='asis'}
+fit2 <- update(fit2, mpg~factor(am) + factor(am):factor(cyl))
+stargazer(fit2,header=FALSE,
+          type='latex',
+          single.row=TRUE,
+          intercept.bottom = FALSE,
+          covariate.labels = c( "Manual(4 cyl) - Intercept",
+                                "Automatic (4 cyl)",
+                                "6 Cyl Manual",
+                                "6 Cyl Automatic",
+                                "8 Cyl Manual",
+                                "8 Cyl Automatic"))
+```
+
+Adding an interaction term (Model 2) between transmission and engine type, the model shows that only manual 4 cylinder cars have a better fuel ecomomy than automatic cars as shown in Table 3. All slope coefficients are negative from the point of reference (Manual 4cyl), all coefficients are either equal to zero (6 cylinder doesn't reject $H_0$) or different than 0. The t-test in appendix 1 reaches the same conclusion and further refine the assumption that the mpg gain is only true for smaller (4 cyl engine).We can quantify this gain for 4 cylinders engine for manual vs automatic using a 95% confidence interval on the first coefficient ("Automatic (4cyl)"). The mpg gain (on average) for manual 4 cylinder cars vs. automatic 4 cylinder car is ```r abs(round(coef(fit2)[2],3))``` $\pm$ 
+```r abs(round(qt(df=26,p=0.975)*coef(summary(fit2))[2,2],3))``` The difference in means between automatic and manual cars is not statistically significant for 6 and 8 cylinder engines.  
+
+##Conclusion  
+We were able to use linear regressions models to explore two hypothesis that our 
+exploratory data analysis had suggested. We've concluded that while on average for the 
+whole sample manual cars have superior gas mileage when we introduce a cylinder effect term to 
+our model we established that the gas mileage superiority was only statistically significant for 
+manual 4-cylinder cars versus other types of cars.
+
+*All models are bad but some  models are useful....*
+
+
+\newpage
+
+#Appendix 1
+
+##t-test of automatic vs. manual mpg
+```{r t.test, echo=FALSE}
+mycars$am <- relevel(mycars$am, ref="manual")
+mytest <- t.test(mycars$mpg ~ mycars$am, alternative="g")
+pander(mytest)
+```
+The t-test is of the mpg variable against the am variable as a factor with two levels and using manual as the reference level. so $H_a: \mu_{manual} > \mu_{automatic}$. We conclude that manual cars have a better mpg than automatic ones on average and without consideration for any other possible interactions. 
+
+##t-test and confidence intervals of cyl vs am gas mileage
+ 
+ 
+```{r confidence interval, echo=TRUE,tidy=TRUE,results='asis'}
+test4cyl <- t.test(mpg ~ am, subset(mycars, cyl=="4cyl"),alternative="g")
+test6cyl <- t.test(mpg ~ am, subset(mycars, cyl=="6cyl"))
+test8cyl <- t.test(mpg ~ am, subset(mycars, cyl=="8cyl"))
+```
+```{r tables, echo=FALSE} 
+pander(test4cyl, caption="4 cylinder manual cars shows greater fuel efficienty than automatic 4 cylinder cars")
+```
+        
+```{r, echo=FALSE} 
+pander(test6cyl, caption="There's no statistical difference in fuel effiency between manual and automatic 6 cylinders cars")
+```
+```{r,echo=FALSE}
+pander(test8cyl,caption="There's no statistical difference in fuel effiency between manual and automatic 8 cylinders cars")
+```
