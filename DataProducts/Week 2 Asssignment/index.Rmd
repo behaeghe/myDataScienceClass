@@ -1,0 +1,27 @@
+---
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+ ```{r hello, echo=FALSE}
+ mydat <- format(Sys.Date(),format="%B %d %Y")
+ ```
+ 
+# Today's date is `r mydat`
+
+This map presents yesterday's cloud coverage over the Boston (USA) and New England area. The background is a leaflet tile provided by Stamen (Stamen.Toner). The cloud coverage is provided by the  [NASA GIBS](https://earthdata.nasa.gov/about/science-system-description/eosdis-components/global-imagery-browse-services-gibs) resource as a leaflet provider tiles more NASA tiles [here](http://leaflet-extras.github.io/leaflet-providers/preview/). 
+ ```{r NASA ,echo=FALSE, message=FALSE, warning=FALSE}
+library(leaflet)
+library(magrittr)
+                leaflet() %>% 
+       setView(lng=-71.0589, lat=42.3601, zoom = 8) %>%
+       addProviderTiles("Stamen.Toner") %>% 
+       addProviderTiles("NASAGIBS.ModisTerraTrueColorCR",
+                        options = providerTileOptions(time =Sys.Date() -1, opacity = 0.5)) %>%
+        addMarkers(lng=-71.0589, lat=42.3601, popup="The Hub: Boston MA")
+
+
+```
